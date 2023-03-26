@@ -1,3 +1,14 @@
 baseURL = 'http://example.org/'
 languageCode = 'en-us'
-title = 'My New Hugo Site'
+title = 'Sleepy Bytes'
+author = 'Aaron Huang'
+copyright = "Copyright © 2023, Aaron Huang."
+theme = 'hugo-bearblog'
+
+# Generate a nice robots.txt for SEO
+enableRobotsTXT = true
+[params]
+  # Site description
+  description = 'A lethargic approach to all things tech.'
+  # Hide made with hugo line
+  hideMadeWithLine = true
