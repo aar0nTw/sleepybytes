@@ -12,3 +12,6 @@ enableRobotsTXT = true
   description = 'A lethargic approach to all things tech.'
   # Hide made with hugo line
   hideMadeWithLine = true
+
+[taxonomies]
+  tag = "tags"
