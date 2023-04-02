@@ -11,7 +11,7 @@ After looking at this repository on [GitHub - fafrd/aquarium: AI-controlled Linu
 
 From machine code, Byte Code, assembly language, C/C++, to various high-level languages and interpreted languages, the development of programming is constantly moving towards natural language.
 
-With the emergence of GPT, it seems that people will soon be able to command computers, operate servers, and even write program in natural language.
+With the emergence of GPT, it seems that people will soon be able to command computers, operate servers, and even programming in natural language.
 
 After all, from machine code to various programming languages such as Perl, Python, JavaScript, and GoLang, it's just layer upon layer of abstraction.
 
