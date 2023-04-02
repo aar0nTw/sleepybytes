@@ -6,7 +6,7 @@ tags = ['gpt', 'pl']
 
 # The Ultimate Form of Programming Language
 
-At the current stage, I feel like GPT is more like the ultimate form of a programming language compared to AGI.
+At the current stage, I feel that GPT is more like the ultimate form of programming language, as opposed to strong AI.
 
 After looking at this repository on [GitHub - fafrd/aquarium: AI-controlled Linux Containers](https://github.com/fafrd/aquarium), I realized that one aspect of programming languages is that syntax has been gradually evolving from low-level to high-level, constantly approaching natural language.
 
