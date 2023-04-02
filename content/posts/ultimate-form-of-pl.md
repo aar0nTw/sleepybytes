@@ -2,9 +2,8 @@
 title = "The Ultimate Form of Programming Language"
 date = 2023-04-02T22:29:48+08:00
 tags = ['gpt', 'pl']
+type = "blog"
 +++
-
-# The Ultimate Form of Programming Language
 
 At the current stage, I feel that GPT is more like the ultimate form of programming language, as opposed to strong AI.
 

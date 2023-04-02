@@ -8,9 +8,8 @@ date = "2023-03-26T23:39:53+08:00"
 # description = "An optional description for SEO. If not provided, an automatically created summary will be used."
 
 tags = []
+type = "blog"
 +++
-
-## The faster world, the slower thinking.
 
 As technology continues to advance at an unprecedented rate, our lives have become faster and more efficient than ever before. However, this constant rush has also led to an increase in stress levels, anxiety, and burnout. In the midst of all this, it's important to remember that the speed of the world around us should not dictate the pace of our thinking.
 
