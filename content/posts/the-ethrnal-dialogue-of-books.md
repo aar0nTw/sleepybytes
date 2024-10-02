@@ -1,5 +1,5 @@
 +++
-title = "The Ethrnal Dialogue of Books"
+title = "The Eternal Dialogue of Books"
 date = "2024-10-02T14:07:51+08:00"
 
 tags = ["Thinking"]
