@@ -1,6 +1,6 @@
 baseURL = 'https://sleepybyt.es/'
 languageCode = 'en-us'
-title = 'Sleepy Bytes'
+title = '💤 Sleepy Bytes'
 author = 'Aaron Huang'
 copyright = "Copyright © 2024 Sleepy Bytes."
 theme = 'hugo-bearblog'
