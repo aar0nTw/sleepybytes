@@ -2,7 +2,7 @@ baseURL = 'https://sleepybyt.es/'
 languageCode = 'en-us'
 title = 'Sleepy Bytes'
 author = 'Aaron Huang'
-copyright = "Copyright © 2023 Sleepy Bytes."
+copyright = "Copyright © 2024 Sleepy Bytes."
 theme = 'hugo-bearblog'
 
 # Generate a nice robots.txt for SEO

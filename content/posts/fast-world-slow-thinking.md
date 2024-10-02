@@ -7,7 +7,7 @@ date = "2023-03-26T23:39:53+08:00"
 #
 # description = "An optional description for SEO. If not provided, an automatically created summary will be used."
 
-tags = []
+tags = ["Thinking"]
 type = "blog"
 +++
 
