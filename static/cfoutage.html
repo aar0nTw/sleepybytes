@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare Outage Analysis</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom Tailwind Configuration for Animations -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                        'fade-in-up': 'fadeInUp 0.7s ease-out',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    },
+                    cursor: {
+                        'none': 'none',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom scrollbar for better presentation look */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8; 
+        }
+        
+        /* Laser pointer specific styles */
+        .laser-pointer {
+            pointer-events: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 12px;
+            height: 12px;
+            background: rgba(255, 0, 0, 0.9);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px 4px rgba(255, 0, 0, 0.6), 0 0 4px 1px rgba(255, 200, 200, 0.8);
+            z-index: 9999;
+            transition: width 0.1s, height 0.1s;
+            mix-blend-mode: normal; 
+        }
+        
+        /* Hide default cursor when laser is active */
+        .cursor-hidden {
+            cursor: none !important;
+        }
+        .cursor-hidden * {
+            cursor: none !important;
+        }
+    </style>
+</head>
+<body class="bg-neutral-900 text-slate-800">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Icon Components (Inline SVGs to replace Lucide imports) ---
+        const IconBase = ({ children, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {children}
+            </svg>
+        );
+
+        const Database = ({ className }) => <IconBase className={className}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></IconBase>;
+        const Server = ({ className }) => <IconBase className={className}><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></IconBase>;
+        const FileCode = ({ className }) => <IconBase className={className}><path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/></IconBase>;
+        const AlertTriangle = ({ className }) => <IconBase className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></IconBase>;
+        const Users = ({ className }) => <IconBase className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></IconBase>;
+        const ArrowRight = ({ className }) => <IconBase className={className}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></IconBase>;
+        const BookOpen = ({ className }) => <IconBase className={className}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></IconBase>;
+        const ArrowDown = ({ className }) => <IconBase className={className}><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></IconBase>;
+        const Globe = ({ className }) => <IconBase className={className}><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></IconBase>;
+        const ChevronLeft = ({ className }) => <IconBase className={className}><path d="m15 18-6-6 6-6"/></IconBase>;
+        const ChevronRight = ({ className }) => <IconBase className={className}><path d="m9 18 6-6-6-6"/></IconBase>;
+        const RotateCcw = ({ className }) => <IconBase className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></IconBase>;
+        const Clock = ({ className }) => <IconBase className={className}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconBase>;
+        const Activity = ({ className }) => <IconBase className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></IconBase>;
+        const Search = ({ className }) => <IconBase className={className}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></IconBase>;
+        const Maximize = ({ className }) => <IconBase className={className}><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></IconBase>;
+        const Minimize = ({ className }) => <IconBase className={className}><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></IconBase>;
+        const User = ({ className }) => <IconBase className={className}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></IconBase>;
+        const Zap = ({ className }) => <IconBase className={className}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></IconBase>;
+        const MousePointer = ({ className }) => <IconBase className={className}><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></IconBase>;
+
+        // --- Data & Logic ---
+
+        const steps = [
+            {
+                id: 'cover',
+                title: "Cloudflare 11/18 Outage Analysis",
+                description: "Deep Dive into the Architecture Failure & Recovery",
+                details: [],
+                isCover: true
+            },
+            {
+                id: 0,
+                title: "1. Incident Start",
+                description: "Nov 18, 2025, 11:20 UTC. A sudden, massive spike in HTTP 5xx errors is observed globally.",
+                details: [
+                    "Status: Critical System Failure.",
+                    "Impact: Websites offline, APIs failing, Dashboard inaccessible.",
+                    "First Reaction: 'Is this a massive cyber attack?'"
+                ]
+            },
+            {
+                id: 1,
+                title: "2. The 'DDoS' Mirage",
+                description: "Engineers saw a confusing 'sawtooth' pattern in error rates. Traffic wasn't just failing; it was flapping.",
+                details: [
+                    "Pattern: Errors spiked, recovered, then spiked again.",
+                    "Confusion: This mimicked a sophisticated, wave-based DDoS attack.",
+                    "Reality: The database update was rolling out gradually. Some nodes generated GOOD configs, others BAD ones."
+                ],
+                showChart: true
+            },
+            {
+                id: 2,
+                title: "3. Normal State",
+                description: "Let's rewind to understand the root cause. Normally, Bot Management relies on a 'Feature File'.",
+                details: [
+                    "Source: ClickHouse database cluster.",
+                    "Mechanism: Regularly runs SQL query `SELECT ...`",
+                    "State: Query sees `default` DB only. File size < Limit (200).",
+                    "Result: Edge Servers load file normally."
+                ]
+            },
+            {
+                id: 3,
+                title: "4. The Trigger",
+                description: "Engineers deployed a permission change to allow explicit access to underlying shard database (`r0`).",
+                details: [
+                    "Change: Expanded DB user permissions.",
+                    "Intent: Benign maintenance for granular management.",
+                    "Risk: Changed system visibility scope unexpectedly."
+                ]
+            },
+            {
+                id: 4,
+                title: "5. The Bug",
+                description: "The SQL query didn't specify the DB name. With new permissions, it read from BOTH `default` and `r0`.",
+                details: [
+                    "SQL Flaw: Became a 'Full Table Scan' across schemas.",
+                    "Result: Data duplication (Main + Backup).",
+                    "Impact: Feature file entries doubled instantly."
+                ]
+            },
+            {
+                id: 5,
+                title: "6. Limit Exceeded",
+                description: "The duplicated data caused the configuration file size to exceed the Edge software's hard limit.",
+                details: [
+                    "Limit: Rust code hard cap of 200 features.",
+                    "Status: Mutated file > 200 items.",
+                    "Key Point: Instantaneous explosion of config size."
+                ]
+            },
+            {
+                id: 6,
+                title: "7. The Crash",
+                description: "The corrupted file propagated globally. Loading it triggered a Rust Panic.",
+                details: [
+                    "Code: `unwrap()` caused thread panic on error.",
+                    "Result: Core Proxy services crashed/restarted.",
+                    "Symptoms: Global 5xx errors."
+                ]
+            },
+            {
+                id: 7,
+                title: "8. Resolution",
+                description: "Team identified the config file issue, stopped propagation, and rolled back.",
+                details: [
+                    "Action: Stopped automatic config generation.",
+                    "Fix: Manually injected known good file.",
+                    "Recovery: Fully restored by 17:06 UTC."
+                ]
+            },
+            {
+                id: 8,
+                title: "Key Takeaways",
+                description: "Lessons learned for IT Professionals.",
+                details: [], 
+                isSummary: true
+            }
+        ];
+
+        // --- Main Component ---
+
+        function CloudflareOutage() {
+            const [currentStep, setCurrentStep] = useState(0);
+            const [isFullscreen, setIsFullscreen] = useState(false);
+            const [showLaser, setShowLaser] = useState(false);
+            const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+            const containerRef = useRef(null);
+
+            const nextStep = () => {
+                if (currentStep < steps.length - 1) setCurrentStep(c => c + 1);
+            };
+
+            const prevStep = () => {
+                if (currentStep > 0) setCurrentStep(c => c - 1);
+            };
+
+            const reset = () => setCurrentStep(0);
+
+            // Mouse tracking for laser
+            useEffect(() => {
+                const handleMouseMove = (e) => {
+                    if (showLaser) {
+                        setMousePos({ x: e.clientX, y: e.clientY });
+                    }
+                };
+                
+                if (showLaser) {
+                    window.addEventListener('mousemove', handleMouseMove);
+                }
+                
+                return () => window.removeEventListener('mousemove', handleMouseMove);
+            }, [showLaser]);
+
+            // Keyboard Navigation & Fullscreen/Laser Change Listener
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    // Laser toggle: Ctrl + L or Cmd + L
+                    if ((e.ctrlKey || e.metaKey) && (e.key === 'l' || e.key === 'L')) {
+                        e.preventDefault();
+                        setShowLaser(prev => !prev);
+                        return; // Stop processing other keys
+                    }
+
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+                        if (currentStep < steps.length - 1) setCurrentStep(c => c + 1);
+                    }
+                    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                        if (currentStep > 0) setCurrentStep(c => c - 1);
+                    }
+                };
+
+                const handleFullscreenChange = () => {
+                    setIsFullscreen(!!document.fullscreenElement);
+                };
+
+                window.addEventListener('keydown', handleKeyDown);
+                document.addEventListener('fullscreenchange', handleFullscreenChange);
+                
+                return () => {
+                    window.removeEventListener('keydown', handleKeyDown);
+                    document.removeEventListener('fullscreenchange', handleFullscreenChange);
+                };
+            }, [currentStep]);
+
+            const toggleFullscreen = () => {
+                if (!document.fullscreenElement) {
+                    containerRef.current?.requestFullscreen().catch(err => {
+                        console.error(`Error attempting to enable fullscreen mode: ${err.message} (${err.name})`);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            };
+
+            const toggleLaser = () => {
+                setShowLaser(prev => !prev);
+            };
+
+            const isCover = steps[currentStep].isCover;
+            const isSummary = steps[currentStep].isSummary;
+            const showChart = steps[currentStep].showChart;
+            const isStandardSlide = !isCover && !isSummary;
+
+            return (
+                <div 
+                    className={`min-h-screen bg-neutral-900 flex items-center justify-center font-sans ${isFullscreen ? '' : 'p-4 md:p-8'} ${showLaser ? 'cursor-hidden' : ''}`}
+                >
+                    
+                    {/* Laser Pointer Element */}
+                    {showLaser && (
+                        <div 
+                            className="laser-pointer"
+                            style={{ 
+                                left: `${mousePos.x}px`, 
+                                top: `${mousePos.y}px` 
+                            }}
+                        />
+                    )}
+
+                    {/* Main Slide Container */}
+                    <div 
+                        ref={containerRef}
+                        className={`bg-white shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300
+                            ${isFullscreen 
+                                ? 'w-full h-full rounded-none fixed inset-0 z-50' 
+                                : 'w-full max-w-7xl aspect-[16/10] md:aspect-[16/9] rounded-xl'
+                            }
+                            ${showLaser ? 'cursor-hidden' : ''}
+                        `}
+                    >
+                        
+                        {/* Slide Header (Hidden on Cover) */}
+                        {!isCover && (
+                            <header className="bg-white px-6 md:px-8 py-4 border-b border-gray-100 flex justify-between items-center h-[12%] flex-shrink-0 animate-fade-in">
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-2 rounded-lg transition-colors duration-500 ${currentStep <= 2 ? 'bg-red-100' : 'bg-orange-100'}`}>
+                                        <AlertTriangle className={`w-5 h-5 md:w-6 md:h-6 ${currentStep <= 2 ? 'text-red-600' : 'text-orange-600'}`} />
+                                    </div>
+                                    <div>
+                                        <h1 className="text-lg md:text-2xl font-bold text-gray-900 tracking-tight">Cloudflare Outage Analysis</h1>
+                                        <p className="text-gray-500 text-[10px] md:text-xs uppercase tracking-widest font-semibold hidden sm:block">Incident Report • Nov 18 2025</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xl md:text-3xl font-bold text-gray-200 font-mono mr-2">
+                                        {currentStep}<span className="text-sm md:text-lg text-gray-300">/{steps.length - 1}</span>
+                                    </span>
+                                    
+                                    {/* Laser Toggle Button */}
+                                    <button 
+                                        onClick={toggleLaser}
+                                        className={`p-2 rounded-full transition-colors relative ${showLaser ? 'bg-red-100 text-red-600' : 'hover:bg-gray-100 text-gray-500'}`}
+                                        title="Toggle Laser Pointer (Ctrl+L)"
+                                    >
+                                        <MousePointer className="w-5 h-5" />
+                                        {showLaser && <span className="absolute top-1 right-1 w-2 h-2 bg-red-600 rounded-full animate-ping"></span>}
+                                    </button>
+
+                                    <button 
+                                        onClick={toggleFullscreen}
+                                        className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+                                        title="Toggle Fullscreen"
+                                    >
+                                        {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                                    </button>
+                                </div>
+                            </header>
+                        )}
+
+                        {/* Slide Body */}
+                        <div className="flex-1 flex overflow-hidden relative">
+                        
+                        {/* Case 0: Cover Slide */}
+                        {isCover && (
+                            <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-white relative overflow-hidden">
+                                {/* Abstract Background */}
+                                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900/40 via-slate-900 to-slate-900 z-0"></div>
+                                <div className="absolute inset-0 opacity-[0.05]" 
+                                    style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
+                                </div>
+
+                                <div className="z-10 text-center max-w-4xl px-4 animate-fade-in-up">
+                                    <div className="inline-flex items-center justify-center p-4 bg-orange-500/10 rounded-2xl mb-8 border border-orange-500/30">
+                                        <Globe className="w-16 h-16 md:w-20 md:h-20 text-orange-500" />
+                                    </div>
+                                    
+                                    <h1 className="text-4xl md:text-7xl font-bold mb-6 tracking-tight leading-tight">
+                                        Cloudflare <br/>
+                                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">
+                                        11/18 Outage Analysis
+                                        </span>
+                                    </h1>
+                                    
+                                    <p className="text-xl md:text-2xl text-gray-400 mb-12 font-light">
+                                        From Database Permission Change to Global Failure
+                                    </p>
+
+                                    <div className="flex flex-col items-center gap-3">
+                                        <div className="flex items-center gap-3 bg-slate-800/50 px-6 py-3 rounded-full border border-slate-700">
+                                            <User className="w-5 h-5 text-blue-400" />
+                                            <span className="text-lg font-mono text-gray-300">Presented by <span className="font-bold text-white">AAID Aaron</span></span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Start Button Hint */}
+                                <button 
+                                    onClick={nextStep}
+                                    className="absolute bottom-10 animate-bounce cursor-pointer flex flex-col items-center gap-2 text-gray-500 hover:text-white transition-colors"
+                                >
+                                    <span className="text-sm font-medium uppercase tracking-widest">Start Presentation</span>
+                                    <ArrowDown className="w-5 h-5" />
+                                </button>
+                                
+                                {/* Controls for Cover */}
+                                <div className="absolute top-6 right-6 flex gap-3 z-20">
+                                     <button 
+                                        onClick={toggleLaser}
+                                        className={`p-2 rounded-full transition-colors relative ${showLaser ? 'bg-red-900/50 text-red-400' : 'hover:bg-slate-800 text-gray-500'}`}
+                                        title="Toggle Laser Pointer (Ctrl+L)"
+                                    >
+                                        <MousePointer className="w-6 h-6" />
+                                        {showLaser && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></span>}
+                                    </button>
+
+                                    <button 
+                                        onClick={toggleFullscreen}
+                                        className="p-2 rounded-full hover:bg-slate-800 text-gray-500 transition-colors"
+                                        title="Toggle Fullscreen"
+                                    >
+                                        {isFullscreen ? <Minimize className="w-6 h-6" /> : <Maximize className="w-6 h-6" />}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Case 1: Standard Slide (Text + Diagram/Chart) */}
+                        {isStandardSlide && (
+                            <>
+                                {/* Left Panel: Content */}
+                                <div className="w-[35%] bg-gray-50 p-6 md:p-12 flex flex-col justify-center border-r border-gray-100 relative z-10 overflow-y-auto">
+                                    <div className="animate-fade-in" key={currentStep}>
+                                        <h2 className="text-2xl md:text-4xl font-bold text-gray-900 mb-4 md:mb-6 leading-tight">
+                                            {steps[currentStep].title}
+                                        </h2>
+                                        <p className="text-sm md:text-lg text-gray-700 mb-6 md:mb-8 leading-relaxed font-medium">
+                                            {steps[currentStep].description}
+                                        </p>
+                                        
+                                        <div className="space-y-3 md:space-y-4">
+                                            {steps[currentStep].details.map((detail, idx) => (
+                                                <div key={idx} className="flex items-start gap-3">
+                                                    <div className={`mt-1.5 w-1.5 h-1.5 md:w-2 md:h-2 rounded-full flex-shrink-0 ${currentStep <= 2 ? 'bg-red-500' : 'bg-blue-500'}`} />
+                                                    <span className="text-xs md:text-base text-gray-600 leading-snug">{detail}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Right Panel: Visualization */}
+                                <div className="w-[65%] bg-white p-4 md:p-12 flex items-center justify-center relative overflow-hidden">
+                                    <div className="absolute inset-0 opacity-[0.03]" 
+                                            style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '30px 30px' }}>
+                                    </div>
+                                    
+                                    <div className={`w-full h-full flex items-center justify-center transform transition-transform duration-500 ${isFullscreen ? 'scale-110' : 'scale-100'}`}>
+                                        {showChart ? (
+                                        <TrafficChart />
+                                        ) : (
+                                        <ArchitectureDiagramNew step={currentStep} />
+                                        )}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {/* Case 2: Summary Slide */}
+                        {isSummary && (
+                            <div className="w-full h-full bg-slate-900 p-8 md:p-20 flex flex-col items-center justify-center text-white relative overflow-hidden">
+                                <div className="absolute inset-0 bg-blue-900/20 z-0"></div>
+                                <div className="z-10 text-center w-full max-w-6xl">
+                                    <Zap className="w-12 h-12 md:w-16 md:h-16 text-yellow-400 mx-auto mb-4 md:mb-6" />
+                                    <h2 className="text-3xl md:text-5xl font-bold mb-8 md:mb-12">Key Takeaways</h2>
+                                    
+                                    <div className="grid md:grid-cols-3 gap-6 md:gap-8 text-left">
+                                        <SummaryCard 
+                                            icon={<FileCode className="w-6 h-6 md:w-8 md:h-8 text-yellow-400" />}
+                                            title="Config is Input"
+                                            content="Internal config files are 'untrusted input'. Validate them as rigorously as user data. Size limits matter."
+                                        />
+                                        <SummaryCard 
+                                            icon={<AlertTriangle className="w-6 h-6 md:w-8 md:h-8 text-red-400" />}
+                                            title="Panic vs Graceful"
+                                            content="Avoid `unwrap()`/panics in critical paths. If a config loads fails, fallback to the last known good state."
+                                        />
+                                        <SummaryCard 
+                                            icon={<Globe className="w-6 h-6 md:w-8 md:h-8 text-green-400" />}
+                                            title="Blast Radius"
+                                            content="Gradual rollouts of dependencies (DB) can still cause instant global outages if consumers read global state at once."
+                                        />
+                                    </div>
+                                    
+                                    <div className="mt-12 text-gray-500 font-mono text-sm">
+                                        Presentation by AAID Aaron
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        </div>
+
+                        {/* Slide Footer (Navigation) */}
+                        <footer className={`bg-white border-t border-gray-100 px-6 md:px-8 flex items-center justify-between flex-shrink-0 transition-all duration-300 ${isCover ? 'h-0 opacity-0 border-0 overflow-hidden' : 'h-[10%] opacity-100'}`}>
+                            <div className="flex gap-1 w-full max-w-xs md:max-w-md h-1.5 md:h-2 bg-gray-100 rounded-full overflow-hidden">
+                                {steps.map((s, idx) => (
+                                    <div 
+                                    key={idx} 
+                                    className={`h-full flex-1 transition-all duration-300 ${idx <= currentStep ? 'bg-blue-600' : 'bg-transparent'}`} 
+                                    />
+                                ))}
+                            </div>
+
+                            <div className="flex gap-4">
+                                <button 
+                                    onClick={prevStep} 
+                                    disabled={currentStep === 0}
+                                    className="flex items-center gap-2 px-4 md:px-6 py-2 rounded-full font-medium text-xs md:text-sm text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                >
+                                    <ChevronLeft className="w-4 h-4 md:w-5 md:h-5" /> Previous
+                                </button>
+                                
+                                {currentStep === steps.length - 1 ? (
+                                    <button 
+                                    onClick={reset}
+                                    className="flex items-center gap-2 px-6 md:px-8 py-2 bg-slate-800 text-white rounded-full font-medium text-xs md:text-sm hover:bg-slate-700 transition-colors shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-slate-500/50"
+                                    >
+                                    <RotateCcw className="w-4 h-4 md:w-5 md:h-5" /> Replay
+                                    </button>
+                                ) : (
+                                    <button 
+                                    onClick={nextStep}
+                                    className="flex items-center gap-2 px-6 md:px-8 py-2 bg-blue-600 text-white rounded-full font-medium text-xs md:text-sm hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl hover:translate-x-1 transform focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                    >
+                                    Next <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
+                                    </button>
+                                )}
+                            </div>
+                        </footer>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- Sub Components ---
+
+        function TrafficChart() {
+            return (
+                <div className="w-full h-full max-h-[500px] aspect-[16/9] bg-slate-900 rounded-lg p-4 md:p-6 flex flex-col border border-slate-700 shadow-2xl relative">
+                {/* Dashboard Header */}
+                <div className="flex justify-between items-center mb-4 md:mb-6 border-b border-slate-700 pb-2 md:pb-4">
+                    <div className="flex items-center gap-3">
+                        <Activity className="text-red-500 w-4 h-4 md:w-5 md:h-5" />
+                        <span className="text-slate-100 font-mono font-bold text-sm md:text-base">Global 5xx Error Rate (HTTP)</span>
+                    </div>
+                    <div className="flex gap-4 text-[10px] md:text-xs font-mono text-slate-400">
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> 2xx OK</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> 5xx Error</span>
+                    </div>
+                </div>
+
+                {/* Chart Area */}
+                <div className="flex-1 relative flex items-end px-2 md:px-4 gap-1 md:gap-2">
+                    {/* Grid lines */}
+                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20">
+                        <div className="w-full h-px bg-slate-500"></div>
+                        <div className="w-full h-px bg-slate-500"></div>
+                        <div className="w-full h-px bg-slate-500"></div>
+                        <div className="w-full h-px bg-slate-500"></div>
+                    </div>
+
+                    {/* Chart Data Bars */}
+                    <div className="flex-1 bg-green-500/20 h-[5%] rounded-t border-t border-green-500"></div>
+                    <div className="flex-1 bg-green-500/20 h-[6%] rounded-t border-t border-green-500"></div>
+                    
+                    {/* THE SPIKE */}
+                    <div className="flex-1 bg-red-500/50 h-[80%] rounded-t border-t-2 border-red-500 animate-pulse relative group">
+                        <div className="absolute -top-8 md:-top-12 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[10px] md:text-xs px-2 py-1 rounded shadow whitespace-nowrap opacity-100 z-20">
+                        11:20 Impact Start
+                        </div>
+                    </div>
+
+                    {/* The FLAP (Recovery) */}
+                    <div className="flex-1 bg-red-500/30 h-[30%] rounded-t border-t border-red-400"></div>
+
+                    {/* The FLAP (Spike again) */}
+                    <div className="flex-1 bg-red-500/50 h-[70%] rounded-t border-t-2 border-red-500 relative">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 text-white/50 text-[8px] md:text-[10px] -rotate-90 whitespace-nowrap">
+                        Bad Config
+                        </div>
+                    </div>
+
+                    {/* The FLAP (Recovery again) */}
+                    <div className="flex-1 bg-red-500/30 h-[40%] rounded-t border-t border-red-400 relative">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 text-white/50 text-[8px] md:text-[10px] -rotate-90 whitespace-nowrap">
+                        Good Config
+                        </div>
+                    </div>
+
+                    {/* Stable High Error */}
+                    <div className="flex-1 bg-red-500/60 h-[90%] rounded-t border-t-2 border-red-600"></div>
+                    <div className="flex-1 bg-red-500/60 h-[85%] rounded-t border-t-2 border-red-600"></div>
+                    <div className="flex-1 bg-red-500/60 h-[88%] rounded-t border-t-2 border-red-600"></div>
+                </div>
+
+                {/* X Axis */}
+                <div className="mt-2 flex justify-between text-[10px] md:text-xs font-mono text-slate-500">
+                    <span>11:00</span>
+                    <span className="text-red-400 font-bold">11:20</span>
+                    <span>11:40</span>
+                    <span>12:00</span>
+                </div>
+
+                {/* Annotation Overlay */}
+                <div className="absolute top-16 md:top-20 right-4 md:right-10 bg-slate-800/90 border border-slate-600 p-2 md:p-3 rounded text-[10px] md:text-xs text-slate-300 max-w-[150px] md:max-w-[200px] shadow-lg">
+                    <div className="flex items-start gap-2">
+                        <Search className="w-3 h-3 md:w-4 md:h-4 text-yellow-400 mt-0.5" />
+                        <div>
+                        <p className="font-bold text-yellow-400 mb-1">Eng. Investigation:</p>
+                        <p>"Is this an attack? The error rate is flapping up and down."</p>
+                        </div>
+                    </div>
+                </div>
+                </div>
+            );
+        }
+
+        function SummaryCard({ icon, title, content }) {
+            return (
+                <div className="bg-white/10 backdrop-blur-sm border border-white/20 p-4 md:p-8 rounded-2xl hover:bg-white/15 transition-all duration-300">
+                <div className="mb-2 md:mb-4">{icon}</div>
+                <h3 className="text-lg md:text-xl font-bold mb-2 md:mb-3 text-white">{title}</h3>
+                <p className="text-sm md:text-base text-gray-300 leading-relaxed">{content}</p>
+                </div>
+            );
+        }
+
+        function ArchitectureDiagramNew({ step }) {
+            const isRecap = step === 1 || step === 2;
+            const isDbUpdated = step >= 4;
+            const isQueryBug = step >= 5;
+            const isFileBig = step >= 5 && step <= 7;
+            const isCrash = step === 7 || step === 1 || step === 2;
+            const isRecovered = step >= 8;
+
+            return (
+                <div className="w-full h-full max-h-[500px] flex items-center justify-center relative">
+                <div className={`relative w-full h-full aspect-[16/9] border-2 rounded-xl bg-white p-4 md:p-6 flex flex-col justify-between shadow-sm transition-colors duration-500
+                    ${isRecap ? 'border-red-200' : 'border-orange-400'}
+                `}>
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-white px-3 flex items-center gap-2">
+                    {isRecap ? <Clock className="w-4 h-4 text-red-500" /> : <Globe className="w-4 h-4 text-orange-500" />}
+                    <span className="font-bold text-gray-800 text-xs md:text-sm tracking-wide">
+                        {isRecap ? 'State at 11:20 UTC' : 'Cloudflare Network'}
+                    </span>
+                    </div>
+
+                    <div className="flex justify-center gap-8 md:gap-16 relative mt-2 md:mt-4">
+                    <div className={`relative flex flex-col items-center p-2 md:p-4 border-2 rounded-lg transition-all duration-500 min-w-[150px] md:min-w-[200px]
+                        ${isDbUpdated && !isRecovered ? 'border-orange-500 bg-orange-50' : 'border-blue-400 bg-white'}
+                        ${isRecap ? 'opacity-50 grayscale' : 'opacity-100'} 
+                    `}>
+                        <div className="mb-2 p-2 md:p-3 bg-blue-50 rounded-full">
+                            <Database className={`w-6 h-6 md:w-8 md:h-8 ${isDbUpdated && !isRecap ? 'text-orange-500' : 'text-blue-500'}`} />
+                        </div>
+                        <span className="font-bold text-gray-800 text-sm md:text-base">ClickHouse Cluster</span>
+                        <span className="text-[10px] md:text-xs text-gray-500 mt-1 uppercase tracking-wide">Config Source</span>
+                        
+                        {isDbUpdated && !isRecovered && !isRecap && (
+                            <div className="absolute -top-3 -right-3 bg-orange-500 text-white text-[8px] md:text-[10px] font-bold px-2 md:px-3 py-1 rounded-full shadow-md animate-pulse-slow">
+                            PERMS UPDATED
+                            </div>
+                        )}
+
+                        {isQueryBug && !isRecovered && !isRecap && (
+                            <div className="absolute top-full mt-2 md:mt-3 bg-red-100 text-red-600 text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 rounded border border-red-200 text-center w-full shadow-sm">
+                                ⚠ Duplicate Rows
+                            </div>
+                        )}
+                    </div>
+                    </div>
+
+                    <div className="flex-1 flex flex-col items-center justify-center relative my-2">
+                    <div className="h-full w-0.5 bg-gray-200 absolute top-0 bottom-0 left-1/2 -translate-x-1/2 z-0"></div>
+                    <div className={`
+                        z-10 bg-white border border-gray-300 shadow-lg p-2 md:p-3 rounded-lg flex items-center gap-2 md:gap-3 transition-all duration-1000 ease-in-out
+                        ${step >= 6 && !isRecovered ? 'translate-y-8 md:translate-y-16' : 'translate-y-[-2rem]'}
+                        ${isFileBig && !isRecovered ? 'border-red-400 bg-red-50' : ''}
+                    `}
+                        style={{ opacity: (step >= 5 && step <= 7) ? 1 : 0 }}
+                    >
+                        <FileCode className={`w-4 h-4 md:w-6 md:h-6 ${isFileBig && !isRecovered ? 'text-red-500' : 'text-blue-500'}`} />
+                        <div className="flex flex-col">
+                        <span className="text-[10px] md:text-xs font-bold text-gray-700">Feature File</span>
+                        {isFileBig && !isRecovered && <span className="text-[8px] md:text-[10px] font-bold text-red-600">SIZE &gt; LIMIT</span>}
+                        </div>
+                    </div>
+                    <ArrowDown className="text-gray-300 w-4 h-4 md:w-6 md:h-6 absolute bottom-2" />
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-2 md:gap-6 h-[150px] md:h-[200px] mb-2">
+                    <div className="col-span-3 flex flex-col items-center justify-center border-r border-dashed border-gray-200 pr-2 md:pr-6">
+                        <div className="relative">
+                            <div className={`w-12 h-12 md:w-20 md:h-20 rounded-full flex items-center justify-center border-4 ${isCrash ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-100'} transition-colors duration-300`}>
+                            <Users className={`w-6 h-6 md:w-10 md:h-10 ${isCrash ? 'text-red-500' : 'text-blue-600'}`} />
+                            </div>
+                            {isCrash && (
+                            <div className="absolute -top-1 -right-1 w-5 h-5 md:w-8 md:h-8 bg-red-500 rounded-full flex items-center justify-center text-white text-xs md:text-lg font-bold border-2 border-white shadow-md">!</div>
+                            )}
+                        </div>
+                        <span className="font-bold text-gray-800 text-xs md:text-base mt-2 md:mt-4">End Users</span>
+                        <span className={`text-[10px] md:text-sm mt-1 font-mono font-bold ${isCrash ? 'text-red-500 bg-red-50 px-2 rounded' : 'text-green-600 bg-green-50 px-2 rounded'}`}>
+                            {isCrash ? 'HTTP 500' : 'HTTP 200 OK'}
+                        </span>
+                    </div>
+
+                    <div className={`col-span-9 border-2 ${isCrash ? 'border-red-400 bg-red-50/20' : 'border-blue-400 bg-white'} rounded-lg p-2 md:p-6 relative transition-colors duration-500`}>
+                        <span className="absolute -top-3 left-4 bg-white px-2 text-[10px] md:text-xs font-bold text-blue-500 uppercase tracking-wider border border-blue-100 rounded">
+                        FL (Frontline Proxy)
+                        </span>
+                        <div className="absolute left-[-24px] top-1/2 w-[24px] h-[3px] bg-gray-300"></div>
+                        <div className="flex h-full items-center justify-around gap-2 md:gap-6">
+                            <div className={`flex-1 h-20 md:h-28 border-2 border-gray-200 bg-gray-50 rounded-lg flex flex-col items-center justify-center opacity-40`}>
+                            <span className="text-xs md:text-sm font-bold text-gray-400">WAF</span>
+                            </div>
+                            <div className={`flex-1 h-24 md:h-36 border-2 rounded-lg flex flex-col items-center justify-center relative transition-all duration-300 shadow-sm
+                            ${isCrash ? 'border-red-500 bg-white scale-110 shadow-xl z-10' : 'border-orange-400 bg-white'}
+                            `}>
+                            <span className={`text-xs md:text-sm font-bold mb-1 md:mb-3 ${isCrash ? 'text-red-600' : 'text-orange-500'}`}>Bots Module</span>
+                            {isCrash ? (
+                                <div className="flex flex-col items-center animate-bounce">
+                                    <AlertTriangle className="w-6 h-6 md:w-10 md:h-10 text-red-600 mb-1 md:mb-2" />
+                                    <span className="text-[10px] md:text-xs font-bold text-red-700 uppercase bg-red-100 px-2 py-1 rounded">Panic!</span>
+                                    <span className="text-[8px] md:text-[10px] text-red-600 mt-1">
+                                    {isRecap ? 'System Down' : 'Memory Limit'}
+                                    </span>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center w-full px-2 md:px-4">
+                                    <div className="w-full h-1.5 md:h-2 bg-gray-100 rounded-full mb-1 md:mb-2 overflow-hidden">
+                                    <div className={`h-full bg-green-400 transition-all duration-300 ${isFileBig && step===6 ? 'w-full bg-yellow-400' : 'w-1/3'}`}></div>
+                                    </div>
+                                    <span className="text-[8px] md:text-[10px] text-gray-400 font-mono">Loading Config...</span>
+                                </div>
+                            )}
+                            </div>
+                            <div className="flex-1 h-20 md:h-28 border-2 border-gray-200 bg-gray-50 rounded-lg flex flex-col items-center justify-center opacity-40">
+                            <span className="text-xs md:text-sm font-bold text-gray-400">Rate Limit</span>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CloudflareOutage />);
+    </script>
+</body>
+</html>
